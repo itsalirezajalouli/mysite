@@ -1,12 +1,13 @@
 from .models import Post
-from .forms import EmailPostForm
 from django.core.mail import send_mail
 from django.views.generic import ListView
+from .forms import EmailPostForm, CommentForm
+from django.views.decorators.http import require_POST
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render, get_object_or_404
 from django.core.paginator import EmptyPage, Paginator, PageNotAnInteger
 
-class PostListView(ListView):
+lass PostListView(ListView):
     queryset = Post.published.all()
     context_object_name = 'posts'
     paginate_by = 3
@@ -35,7 +36,13 @@ def post_detail(request: HttpRequest, year: int, month: int, day: int,
                              publish__year = year,
                              publish__month = month,
                              publish__day = day)
-    return render(request, 'blog/post/detail.html', { 'post': post }) 
+
+    # the reason we can use post.comment is we defined comments as manager when
+    # we set related_name of foreign key to comments in Comment model
+    comments = post.comments.filter(active = True)                                  # this is a queryset
+    form = CommentForm()
+    return render(request, 'blog/post/detail.html',
+                  { 'post': post, 'comments': comments, 'form': form }) 
 
 def post_share(request: HttpRequest, post_id: int) -> HttpResponse:
     post = get_object_or_404(Post,                                                  # first time page loads, this
@@ -56,7 +63,7 @@ def post_share(request: HttpRequest, post_id: int) -> HttpResponse:
                        f'{cd['name']}\'s comment: {cd['comment']}')
             send_mail(subject = subject,
                       message = message,
-                      from_email = None,
+                      from_email = None,                                            # default in .env will be used
                       recipient_list = [cd['to']])
             sent = True
 
@@ -65,3 +72,19 @@ def post_share(request: HttpRequest, post_id: int) -> HttpResponse:
 
     return render(request, 'blog/post/share.html',
                   {'post': post, 'form': form, 'sent': sent})
+
+@require_POST                                                                       # only allow POST | else 405
+def post_comment(request: HttpRequest, post_id: int) -> HttpResponse:
+    post = get_object_or_404(Post,
+                             id = post_id,
+                             status = Post.Status.PUBLISHED)
+    comment = None
+    # A comment was posted
+    form = CommentForm(data = request.POST)
+    if form.is_valid():
+        comment = form.save(commit = False)                                         # create but not save to db
+        comment.post = post                                                         # assign post to comment
+        comment.save()                                                              # save to db
+    return render(request, 'blog/post/comment.html',
+                  {'post': post, 'form': form, 'comment': comment})
+
