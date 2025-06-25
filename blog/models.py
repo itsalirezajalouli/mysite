@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone 
+from taggit.managers import TaggableManager
 
 class PublishedManager(models.Manager):
     def get_queryset(self):
@@ -39,6 +40,7 @@ class Post(models.Model):
                               default = Status.DRAFT)                               # it's an enum
     objects = models.Manager()                                                      # default manager 
     published = PublishedManager()                                                  # custom manager
+    tags = TaggableManager()
 
     # django uses this method to represent the object in places like admin site
     def __str__(self) -> str:
